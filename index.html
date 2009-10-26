@@ -1,0 +1,167 @@
+<!-- <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"> -->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:fb="http://www.facebook.com/2008/fbml"> 
+    <head>
+        <!-- 
+            If loaded from a facebook iframe canvas, the fb_sig_ parameters in the iframe url's
+            query string are passed to the swf as flash vars. 
+            
+            If the app is loaded loaded outside of facebook.com, the swf requests a session to be
+            setup from the javascript and passed to the swf at runtime.
+    
+            If the user presses the login button in the swf from a facebook connect, a opens a popup 
+            login window is opened from javascript which passes updated session data back to the swf.
+            
+            If the user presses the login button in the swf from a facebook canvas page, javascript
+            redirects the user to a facebook login page which will redirect them back to the canvas
+            page on completion.
+        -->
+        
+        <!--
+            Copyright 2009 Becky Carella
+
+            Licensed under the Apache License, Version 2.0 (the "License");
+            you may not use this file except in compliance with the License.
+            You may obtain a copy of the License at
+
+               http://www.apache.org/licenses/LICENSE-2.0
+
+            Unless required by applicable law or agreed to in writing, software
+            distributed under the License is distributed on an "AS IS" BASIS,
+            WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            See the License for the specific language governing permissions and
+            limitations under the License.
+        -->
+        
+        <title>Facebook AS3 API Connect Demo</title>
+
+        <!-- include the API from facebook's server  -->
+        <script src="http://static.ak.facebook.com/js/api_lib/v0.4/FeatureLoader.js.php" type="text/javascript"></script>
+        
+        <!-- include swfobject library -->
+        <script type="text/javascript" src="swfobject.js"></script>
+        
+        <script type="text/javascript">
+        
+            var api_key = "YOUR_API_KEY";
+            var canvas_page = "YOUR_CANVAS_PAGE_URL";
+            var params = {};
+            var in_fb_iframe = false;
+            
+            /** 
+             * Load the swf and display in the html.
+             */
+            function loadSwf() {
+                var flashvars = {};
+                in_fb_iframe = (window.location.search.indexOf("fb_sig_in_iframe=1") >= 0);
+                if (in_fb_iframe) {
+                    // App is running in a facebook canvas iframe
+                    // Parse the fb_sig_ parameters in the iframe url into an object 
+                    // and pass them to the swf
+                    query_string = window.location.search.substring(1).split("&");
+                    for (var i = 0; i < query_string.length; i++) {
+                        var key = escape(unescape(query_string[i].split("=")[0]));
+                        flashvars[key] = escape(unescape(query_string[i].split("=")[1]));
+                    }
+                }
+                params.allowscriptaccess = "always";
+                swfobject.embedSWF("ConnectDemo.swf?no_cache=" + Math.random(), "content", "250", "240", "9.0.0", "expressInstall.swf", flashvars, params);
+            }
+            
+            /** 
+             * Get a reference to the swf object
+             */
+            function getSWF() {
+                if (navigator.appName.indexOf("Microsoft") != -1) { return window['content']; }
+                else { return document['content']; }
+            }
+            
+            /** 
+             * Initialize the facebook application
+             * Called from swf on load
+             */
+            function initFacebook() {
+
+                if (in_fb_iframe) {
+                    // App is loaded from facebook iframe canvass.  
+                    // Do nothing, session vars were already passed to the swf on load
+                    // and we don't need the javascript api for any other actions in
+                    // this app
+                } else {    
+                    // App is initialized from a non-facebook url.  
+                    FB_RequireFeatures(["Api", "Connect"], function() {
+                        FB.Facebook.init(api_key, 'xd_receiver.html', 
+                                        {   "ifUserConnected": onConnectStatus, 
+                                            "ifUserNotConnected": onConnectStatus, 
+                                        });   
+                    });
+                }
+            }
+            
+            /**
+             * Get the facebook session data from the SessionRecord, formatted like fb:swf
+             * See: http://wiki.developers.facebook.com/index.php/JS_API_T_FB.SessionRecord
+             * See: http://wiki.developers.facebook.com/index.php/Fb:swf
+             */
+            function getSessionInfo() {
+                var sessionData = FB.Facebook.apiClient.get_session();
+                var fbdata = {};
+                if (sessionData) {
+                    fbdata.fb_sig_session_key = sessionData.session_key;
+                    fbdata.fb_sig_ss = sessionData.secret;
+                    fbdata.fb_sig_user = sessionData.uid;
+                    fbdata.fb_sig = sessionData.sig;
+                    fbdata.fb_sig_api_key = api_key;
+                } 
+                return fbdata;
+            }
+            
+            /** 
+             * Prompt the user to login and/or authenticate the application.
+             *
+             * If loaded in a facebook iframe canvas page, the user is redirected
+             * to the login page and then returned to the app page.
+             *
+             * If loaded from a facebook connect site, a popup window appears
+             * and the swf updates itself after login.
+             * 
+             * Called from the swf.
+             */
+            function promptConnect() {
+                
+                if (!in_fb_iframe) {
+                    // Call to FB.Connect.requireSession opens a popup window for 
+                    // user to allow the app.  Pass null as the callback function
+                    // (connect status will be updated in 'onConnectStatus') and
+                    // pass true for isUserActionHint to make it skip the 
+                    // javascript dialog and go straight to the popup window
+                    FB.ensureInit(function() {
+                        FB.Connect.requireSession(null, true);  
+                    });
+                } else {
+                     // FB.Connect.requireSession doesn't work in an iframe canvas,
+                     // redirect to the login page instead
+                     self.parent.location =  'http://www.facebook.com/login.php?api_key=' + api_key
+                                             + '&extern=1&fbconnect=1&v=1.0'
+                                             + '&next=' + escape(canvas_page)
+                                             + '&cancel_url=' + escape(canvas_page);                     
+                } 
+            }
+            
+            /** 
+             * Facebook connect status has changed, let the swf know
+             */
+            function onConnectStatus() {
+                var swf = getSWF();
+                if (swf) { swf.updateConnection(getSessionInfo()); }
+            }
+            
+        </script>
+    </head>
+    
+    <body onLoad="loadSwf();">
+        <center>
+        
+        <div id="content"><!--  swfobject loads the swf here --></div>
+        </center>
+    </body>
+</html>

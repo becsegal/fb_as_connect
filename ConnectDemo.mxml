@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Application xmlns:mx="http://www.adobe.com/2006/mxml" 
+    layout="vertical" 
+    width="250"
+    height="240"
+    horizontalScrollPolicy="off"
+    verticalScrollPolicy="off"
+    styleName="plain"
+    applicationComplete="init()">
+    
+    <mx:Script>
+        <![CDATA[
+        
+            /** 
+             * Facebook authentication demo displays your profile pic and name if you're logged into 
+             * facebook and have authorized the app.  If you you're not logged in or you haven't 
+             * authorized the app it shows you a button you can click to connect.  The app can 
+             * authenticate with Facebook Connect if run from a non-Facebook site or it can run
+             * as a Facebook app in an iframe canvas.
+             *
+             * Copyright 2009 Becky Carella
+             *
+             * Licensed under the Apache License, Version 2.0 (the "License");
+             * you may not use this file except in compliance with the License.
+             * You may obtain a copy of the License at
+             *
+             * http://www.apache.org/licenses/LICENSE-2.0
+             * 
+             * Unless required by applicable law or agreed to in writing, software
+             * distributed under the License is distributed on an "AS IS" BASIS,
+             * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+             * See the License for the specific language governing permissions and
+             * limitations under the License.
+             */
+             
+            import com.facebook.Facebook;
+            import com.facebook.data.users.FacebookUser;
+            import com.facebook.data.users.GetInfoData;
+            import com.facebook.events.FacebookEvent;
+            import com.facebook.session.WebSession;
+            import com.facebook.net.FacebookCall;
+            import com.facebook.commands.users.GetLoggedInUser;
+            import com.facebook.commands.users.GetInfo;
+            import com.facebook.facebook_internal;
+
+            protected var session:WebSession
+            protected var facebook:Facebook;
+            
+            [Bindable]
+            public var user:FacebookUser;
+            
+            [Bindable]
+            public var errorMessage:String;
+            
+            
+            
+            /** 
+             * Connect to facebook when app initializes
+             */
+            protected function init():void {
+                if (!ExternalInterface.available) {
+                    errorMessage = "Demo must be run from inside a webpage";
+                    currentState = "Error";
+                    return;
+                }
+                
+                // swf was loaded from a facebook iframe canvas so session info should
+                // have been included in flashvars from the javascript.  go ahead
+                // and connect
+                if (loaderInfo.parameters.fb_sig_in_iframe) {
+                    trace("[init] connecting from a facebook iframe canvas");
+                    connect(loaderInfo.parameters);
+                } 
+                // swf was loaded from a facebook connect site.  request session info
+                // from javascript.
+                else {
+                    trace("[init] connecting from a facebook connect site");
+                    ExternalInterface.addCallback("updateConnection", connect);
+                    ExternalInterface.call("initFacebook");
+                }
+            }
+            
+            
+            /** 
+             * Attempt to start a web session with the fb_sig_ values in the given 
+             * parameters object
+             */
+            protected function connect(parameters:Object) : void {
+                if (parameters.fb_sig_api_key && parameters.fb_sig_ss && parameters.fb_sig_session_key) {
+                    session = new WebSession(parameters.fb_sig_api_key, parameters.fb_sig_ss, parameters.fb_sig_session_key);
+                    session.facebook_internal::_uid = parameters.fb_sig_user;
+            
+                    //Create our facebook instance
+                    facebook = new Facebook();
+                    session.addEventListener(FacebookEvent.CONNECT, onSessionConnect);
+                    facebook.startSession(session);
+                    session.verifySession();
+                } else {
+                    currentState = "NotConnected";
+                }
+            }
+            
+
+            /** 
+             * Session has connected.  Request user data.
+             */
+            protected function onSessionConnect(event:FacebookEvent):void {
+                session.removeEventListener(FacebookEvent.CONNECT, onSessionConnect);
+                trace("[onSessionConnect] event: " + event.toString());
+
+                if (event.error) {
+                    errorMessage = "(" + event.error.errorCode + ") " + event.error.errorMsg;
+                    currentState = "Error";
+                } else if (event.success) {
+                    currentState = "Connected";
+                    
+                    // request user info
+                    var call:FacebookCall = new GetInfo([facebook.uid], ["name", "pic_with_logo"]);
+                    call.addEventListener(FacebookEvent.COMPLETE, onUserInfoLoaded, false, 0, true);
+                    facebook.post(call);
+                    
+                } else {
+                    currentState = "NotConnected";
+                }
+            }
+            
+            
+            /**
+             * User clicked on the connect button.  Call javascript to 
+             * show a connect dialog or webpage
+             */
+            protected function promptConnect() : void {
+                if (ExternalInterface.available) {
+                    ExternalInterface.call("promptConnect");
+                }
+            }
+            
+            
+            /** 
+             * User info has loaded, update the display
+             */
+            protected function onUserInfoLoaded(event:FacebookEvent) : void {
+                if (event.success && event.data) {
+                    if (event.data is GetInfoData) {
+                        user = FacebookUser(GetInfoData(event.data).userCollection.getItemAt(0));
+                        if (!user) {
+                            errorMessage = "Error parsing user from " + GetInfoData(event.data).rawResult;
+                            currentState = "Error";
+                        }
+                    }
+                } 
+                if (event.error) {
+                    errorMessage = "(" + event.error.errorCode + ") " + event.error.errorMsg;
+                    trace("[onUserInfoLoaded] " + errorMessage);
+                    currentState = "Error";
+                } 
+            }
+            
+            
+        ]]>
+    </mx:Script>
+    
+    
+    <mx:states>
+        <mx:State name="NotConnected">
+            <mx:SetProperty target="{panel}" name="status" value="Not connected" />
+            <mx:AddChild relativeTo="{panel_content}" >
+                <mx:Button id="connectButton" icon="@Embed(source='Connect_white_small_short.gif')" 
+                           label="Connect with Facebook" click="promptConnect();"
+                           horizontalCenter="0" />
+            </mx:AddChild> 
+        </mx:State>
+        
+        <mx:State name="Connected">
+            <mx:SetProperty target="{panel}" name="status" value="Connected" />
+            <mx:AddChild relativeTo="{panel_content}" >
+                <mx:Label id="welcome" text="You are logged in as" />
+            </mx:AddChild> 
+            <mx:AddChild relativeTo="{panel_content}" >
+                <mx:Label id="nameLabel" text="{user.name}" fontWeight="bold"  />
+            </mx:AddChild> 
+            <mx:AddChild relativeTo="{panel_content}" >
+                <mx:Image id="profilePicture" source="{user.pic_with_logo}"  />
+            </mx:AddChild> 
+        </mx:State>
+
+        <mx:State name="Error">
+            <mx:SetProperty target="{panel}" name="status" value="Error" />
+            <mx:AddChild relativeTo="{panel_content}" >
+                <mx:TextArea id="errorLabel" width="100%" height="100%" color="#FF0000" borderThickness="0" 
+                             horizontalCenter="0" text="{errorMessage}" editable="false" />
+            </mx:AddChild> 
+        </mx:State>
+    </mx:states>
+    
+    <mx:Panel id="panel" title="Facebook Auth" status="Initializing" 
+              width="100%" height="100%" borderColor="#003399" >
+              
+        <mx:VBox id="panel_content" paddingLeft="10" paddingTop="10" paddingRight="10" paddingBottom="10" 
+                horizontalAlign="center" verticalAlign="middle" width="100%"  />
+
+    </mx:Panel>
+    
+</mx:Application>

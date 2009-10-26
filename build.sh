@@ -1,0 +1,1 @@
+mxmlc -compiler.library-path+="lib/" -debug="true" ConnectDemo.mxml
