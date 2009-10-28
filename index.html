@@ -53,15 +53,16 @@
             function loadSwf() {
                 var flashvars = {};
                 in_fb_iframe = (window.location.search.indexOf("fb_sig_in_iframe=1") >= 0);
-                if (in_fb_iframe) {
-                    // App is running in a facebook canvas iframe
-                    // Parse the fb_sig_ parameters in the iframe url into an object 
-                    // and pass them to the swf
-                    query_string = window.location.search.substring(1).split("&");
-                    for (var i = 0; i < query_string.length; i++) {
-                        var key = escape(unescape(query_string[i].split("=")[0]));
-                        flashvars[key] = escape(unescape(query_string[i].split("=")[1]));
-                    }
+                // Get the query parameters.  If the app is running in a facebook canvas iframe,
+                // the fb_sig_ parameters will be passed to the swf and it will immediately initialize
+                // a session.  We also look for the api key and canvas page url in case it's not set
+                // above.
+                query_string = window.location.search.substring(1).split("&");
+                for (var i = 0; i < query_string.length; i++) {
+                    var key = escape(unescape(query_string[i].split("=")[0]));
+                    flashvars[key] = escape(unescape(query_string[i].split("=")[1]));
+                    if (key == "fb_sig_api_key") api_key = flashvars[key];
+                    if (key == "canvas_page") canvas_page = flashvars[key];
                 }
                 params.allowscriptaccess = "always";
                 swfobject.embedSWF("ConnectDemo.swf?no_cache=" + Math.random(), "content", "250", "240", "9.0.0", "expressInstall.swf", flashvars, params);
